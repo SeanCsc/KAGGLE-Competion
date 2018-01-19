@@ -1,0 +1,251 @@
+{
+  "cells": [
+    {
+      "metadata": {
+        "_cell_guid": "0e4d6f52-f0c0-44be-9e35-20efe2bfbef8",
+        "_uuid": "18895ec1879e2261a16b640a3672933f0e04167e",
+        "trusted": true
+      },
+      "cell_type": "code",
+      "source": "# This Python 3 environment comes with many helpful analytics libraries installed\n# It is defined by the kaggle/python docker image: https://github.com/kaggle/docker-python\n# For example, here's several helpful packages to load in \n\nimport numpy as np # linear algebra\nimport pandas as pd # data processing, CSV file I/O (e.g. pd.read_csv)\n\n# Input data files are available in the \"../input/\" directory.\n# For example, running this (by clicking run or pressing Shift+Enter) will list the files in the input directory\nfrom subprocess import check_output\nprint(check_output([\"ls\", \"../input\"]).decode(\"utf8\"))\n# Any results you write to the current directory are saved as output.\n#plot\nimport matplotlib.pyplot as plt\n%matplotlib inline\n#statistic and visualization\nimport seaborn as sns\nfrom scipy import stats\nfrom scipy.stats import norm,skew\n#sklearn\nfrom sklearn import cross_validation,metrics\nfrom sklearn.preprocessing import LabelEncoder,RobustScaler\nfrom sklearn.linear_model import Ridge, RidgeCV, ElasticNet, LassoCV, Lasso\nfrom sklearn.kernel_ridge import KernelRidge\nfrom sklearn.model_selection import cross_val_score,KFold,train_test_split\nfrom sklearn.grid_search import GridSearchCV\nfrom sklearn.pipeline import make_pipeline\nfrom sklearn.ensemble import GradientBoostingRegressor\nfrom xgboost import XGBRegressor\nfrom lightgbm import LGBMRegressor\n\n#Ensemble and stack\nfrom sklearn.base import BaseEstimator, TransformerMixin, RegressorMixin, clone\n\n#ignore warning\nimport warnings\ndef ignore_warn(*args, **kwargs):\n    pass\nwarnings.warn = ignore_warn #ignore annoying warning (from sklearn and seaborn)",
+      "execution_count": 105,
+      "outputs": [
+        {
+          "output_type": "stream",
+          "text": "sample_submission.csv\ntest.csv\ntrain.csv\n\n",
+          "name": "stdout"
+        }
+      ]
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "collapsed": true,
+        "_uuid": "2950810dc718b01939d5547f51da73edc96af9ff"
+      },
+      "cell_type": "code",
+      "source": "train_ori = pd.read_csv('../input/train.csv')\ntest_ori = pd.read_csv('../input/test.csv')\nntrain = len(train_ori)\nntest = len(test_ori)",
+      "execution_count": 106,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "collapsed": true,
+        "_uuid": "56fcc88e5f1a7ae725f1fcdb47a3c3622842ff7d"
+      },
+      "cell_type": "code",
+      "source": "#Extract the label\ny = train_ori['SalePrice']\ntrain_ori = train_ori.drop(['SalePrice'],axis = 1)\n",
+      "execution_count": 107,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "collapsed": true,
+        "_uuid": "c2e106be6126c96ed744f5765ae9a2bbd5307e0b"
+      },
+      "cell_type": "code",
+      "source": "#Extract ID\ntrain_id = train_ori['Id']\ntrain = train_ori.drop(['Id'],axis = 1)\ntest_id = test_ori['Id']\ntest = test_ori.drop(['Id'],axis = 1)",
+      "execution_count": 108,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "_uuid": "49beff45bd6b5302dd65a42fc283112319408e15"
+      },
+      "cell_type": "code",
+      "source": "#analyze the skewness of y and turn it to normalization\n#sns.distplot(y,fit = norm)\n#(mu,sigma) = norm.fit(y)\ny = np.log1p(y)\nsns.distplot(y,fit = norm)\nnorm.fit(y)",
+      "execution_count": 109,
+      "outputs": [
+        {
+          "output_type": "execute_result",
+          "execution_count": 109,
+          "data": {
+            "text/plain": "(12.024057394918406, 0.39931245219387496)"
+          },
+          "metadata": {}
+        },
+        {
+          "output_type": "display_data",
+          "data": {
+            "text/plain": "<matplotlib.figure.Figure at 0x7f32d33f6b70>",
+            "image/png": "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\nhPBC/x+omuTtWDdu4gAAAABJRU5ErkJggg==\n"
+          },
+          "metadata": {}
+        }
+      ]
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "_uuid": "898386bc6c0f5ae24f1a1a2f628cd727a8c04a67"
+      },
+      "cell_type": "code",
+      "source": "#combine the training data and test data to do preprocessing\n#preprocessing include filling missing values, label encoder, get_dummies,normalization\nall_data = pd.concat((train,test))\nall_data['PoolQC'] = all_data['PoolQC'].fillna('None')\nall_data['MiscFeature'] = all_data['MiscFeature'].fillna('None')\nall_data['Fence'] = all_data['Fence'].fillna('None')\nall_data[\"FireplaceQu\"] = all_data[\"FireplaceQu\"].fillna(\"None\")\nall_data[\"LotFrontage\"] = all_data['LotFrontage'].fillna(0)\nall_data['Alley'] = all_data[\"Alley\"].fillna('None')\nfor col in ('GarageType', 'GarageFinish', 'GarageQual', 'GarageCond'):\n    all_data[col] = all_data[col].fillna('None')\nfor col in ('GarageYrBlt', 'GarageArea', 'GarageCars'):\n    all_data[col] = all_data[col].fillna(0)\nfor col in ('BsmtFinSF1', 'BsmtFinSF2', 'BsmtUnfSF','TotalBsmtSF', 'BsmtFullBath', 'BsmtHalfBath'):\n    all_data[col] = all_data[col].fillna(0)\n\nfor col in ('BsmtQual', 'BsmtCond', 'BsmtExposure', 'BsmtFinType1', 'BsmtFinType2'):\n    all_data[col] = all_data[col].fillna('None')\nall_data[\"MasVnrType\"] = all_data[\"MasVnrType\"].fillna(\"None\")\nall_data[\"MasVnrArea\"] = all_data[\"MasVnrArea\"].fillna(0)\nall_data[\"MasVnrType\"] = all_data[\"MasVnrType\"].fillna(\"None\")\nall_data[\"MasVnrArea\"] = all_data[\"MasVnrArea\"].fillna(0)\nall_data['MSZoning'] = all_data['MSZoning'].fillna(all_data['MSZoning'].mode()[0])\n#all_data = all_data.drop(['Utilities'], axis=1)\nall_data[\"Functional\"] = all_data[\"Functional\"].fillna(\"Typ\")\nall_data['Electrical'] = all_data['Electrical'].fillna(all_data['Electrical'].mode()[0])\nall_data['KitchenQual'] = all_data['KitchenQual'].fillna(all_data['KitchenQual'].mode()[0])\nall_data['Exterior1st'] = all_data['Exterior1st'].fillna(all_data['Exterior1st'].mode()[0])\nall_data['Exterior2nd'] = all_data['Exterior2nd'].fillna(all_data['Exterior2nd'].mode()[0])\nall_data['SaleType'] = all_data['SaleType'].fillna(all_data['SaleType'].mode()[0])\nall_data['MSSubClass'] = all_data['MSSubClass'].fillna(\"None\")\n#all_data = all_data.drop(['Utilities'],axis = 1)\nperc = all_data.isnull().sum()/len(all_data)\nperc.sort_values(ascending = False)",
+      "execution_count": 110,
+      "outputs": [
+        {
+          "output_type": "execute_result",
+          "execution_count": 110,
+          "data": {
+            "text/plain": "Utilities        0.000685\nSaleCondition    0.000000\nFoundation       0.000000\nRoofMatl         0.000000\nExterior1st      0.000000\nExterior2nd      0.000000\nMasVnrType       0.000000\nMasVnrArea       0.000000\nExterQual        0.000000\nExterCond        0.000000\nBsmtQual         0.000000\nYearRemodAdd     0.000000\nBsmtCond         0.000000\nBsmtExposure     0.000000\nBsmtFinType1     0.000000\nBsmtFinSF1       0.000000\nBsmtFinType2     0.000000\nBsmtFinSF2       0.000000\nBsmtUnfSF        0.000000\nRoofStyle        0.000000\nYearBuilt        0.000000\nHeating          0.000000\nOverallCond      0.000000\nMSZoning         0.000000\nLotFrontage      0.000000\nLotArea          0.000000\nStreet           0.000000\nAlley            0.000000\nLotShape         0.000000\nLandContour      0.000000\n                   ...   \nScreenPorch      0.000000\nGarageFinish     0.000000\nPoolArea         0.000000\nPoolQC           0.000000\nFence            0.000000\nMiscFeature      0.000000\nMiscVal          0.000000\nMoSold           0.000000\nYrSold           0.000000\nGarageCars       0.000000\nGarageYrBlt      0.000000\nCentralAir       0.000000\nFullBath         0.000000\nElectrical       0.000000\n1stFlrSF         0.000000\n2ndFlrSF         0.000000\nLowQualFinSF     0.000000\nGrLivArea        0.000000\nBsmtFullBath     0.000000\nBsmtHalfBath     0.000000\nHalfBath         0.000000\nGarageType       0.000000\nBedroomAbvGr     0.000000\nKitchenAbvGr     0.000000\nKitchenQual      0.000000\nTotRmsAbvGrd     0.000000\nFunctional       0.000000\nFireplaces       0.000000\nFireplaceQu      0.000000\nMSSubClass       0.000000\nLength: 79, dtype: float64"
+          },
+          "metadata": {}
+        }
+      ]
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "collapsed": true,
+        "_uuid": "34c2616918bcb773257154e517a739bcac03558a"
+      },
+      "cell_type": "code",
+      "source": "#Feature Engineering\n#some feature represents categories by number ,we should keep it as string to encoder \nall_data['MSSubClass'] = all_data['MSSubClass'].apply(str)\nall_data['OverallCond'] = all_data['OverallCond'].astype(str)\nall_data['YrSold'] = all_data['YrSold'].astype(str)\nall_data['MoSold'] = all_data['MoSold'].astype(str)\ncols = ('FireplaceQu', 'BsmtQual', 'BsmtCond', 'GarageQual', 'GarageCond', \n        'ExterQual', 'ExterCond','HeatingQC', 'PoolQC', 'KitchenQual', 'BsmtFinType1', \n        'BsmtFinType2', 'Functional', 'Fence', 'BsmtExposure', 'GarageFinish', 'LandSlope',\n        'LotShape', 'PavedDrive', 'Street', 'Alley', 'CentralAir', 'MSSubClass', 'OverallCond', \n        'YrSold', 'MoSold')\nfor c in cols:\n    lbl = LabelEncoder()\n    lbl.fit(list(all_data[c].values))\n    all_data[c] = lbl.transform(list(all_data[c].values))\n\n#add a new feature\nall_data['TotalSF'] = all_data['TotalBsmtSF'] + all_data['1stFlrSF'] + all_data['2ndFlrSF']\n#normalization \nnumeric_features = all_data.dtypes[all_data.dtypes != \"object\"].index\nall_data[numeric_features].apply(lambda x: skew(x.dropna())).sort_values(ascending=False)\nskewness = pd.DataFrame({'Skew' :all_data[numeric_features].apply(lambda x: skew(x.dropna())).sort_values(ascending=False)\n})\nskewness = skewness[abs(skewness) > 0.75]\nfrom scipy.special import boxcox1p\nskewed_features = skewness.index\nlam = 0.15\nfor feat in skewed_features:\n    all_data[feat] = boxcox1p(all_data[feat], lam)\nall_data = pd.get_dummies(all_data)\n\ntrain_f = all_data[:ntrain]\ntest_f = all_data[ntrain:]",
+      "execution_count": 111,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "collapsed": true,
+        "_uuid": "350496b800c6916dd112bb8439c7b2258ea68e8a"
+      },
+      "cell_type": "code",
+      "source": "#Model selection and evaluation\nn_folds = 5\ndef rmsle_cv(model):\n    kf = KFold(n_folds, shuffle=True, random_state=42).get_n_splits(train.values)\n    rmse= np.sqrt(-cross_val_score(model, train_f, y, scoring=\"neg_mean_squared_error\", cv = kf))\n    return(rmse)",
+      "execution_count": 112,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "collapsed": true,
+        "_uuid": "9d1c5d950801892fbf9e3c6ce94f992ce5f6ead8"
+      },
+      "cell_type": "code",
+      "source": "#Model\nLasso = make_pipeline(RobustScaler(),LassoCV(alphas = [1, 0.1, 0.001, 0.0005], random_state = 1))\nEnet = make_pipeline(RobustScaler(), ElasticNet(alpha = 0.0005, l1_ratio = 0.8,random_state = 3))\nKridge = KernelRidge(alpha=0.6, kernel='polynomial', degree=2, coef0=2.5)\nmodel_xgb = XGBRegressor(base_score = 0.5,colsample_bylevel = 0.7, colsample_bytree =0.75,\n                    max_depth = 5,\n                    min_child_weight = 6,\n                   gamma = 0,\n                   learning_rate = 0.1,\n                   max_delta_step = 0,\n                   missing = None,\n                   n_estimator = 200,\n                   nthread = -1,\n                   objective = 'reg:linear',\n                   reg_alpha = 100,\n                   reg_lambda = 0.8,\n                   scale_pos_weight = 1,\n                   silent = True,\n                   subsample = 1)\nGBoost = GradientBoostingRegressor(n_estimators=3000, learning_rate=0.05,\n                                   max_depth=4, max_features='sqrt',\n                                   min_samples_leaf=15, min_samples_split=10, \n                                   loss='huber', random_state =5)\nLgbm = LGBMRegressor(objective='regression',num_leaves=5,\n                              learning_rate=0.05, n_estimators=720,\n                              max_bin = 55, bagging_fraction = 0.8,\n                              bagging_freq = 5, feature_fraction = 0.2319,\n                              feature_fraction_seed=9, bagging_seed=9,\n                              min_data_in_leaf =6, min_sum_hessian_in_leaf = 11)\n",
+      "execution_count": 113,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "_uuid": "79e4398a0d85672561f13a5bcac475cd2fcf8228"
+      },
+      "cell_type": "code",
+      "source": "rmsle_cv(model_xgb)",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "collapsed": true,
+        "trusted": true,
+        "_uuid": "b1f42b5f3f4d9b21a7246630409dc503167665bc"
+      },
+      "cell_type": "code",
+      "source": "class AveragingModels(BaseEstimator,RegressorMixin, TransformerMixin):\n    def __init__(self,models):\n        self.models = models\n    def fit(self,x,y):\n        self.models_ = [clone(x) for x in self.models]\n        \n        for model in self.models_:\n            model.fit(x,y)\n        return self\n\n    def predict(self, x):\n        predictions = np.column_stack([\n            model.predict(x) for model in self.models_\n        ])\n        return np.mean(predictions,axis = 1)",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "collapsed": true,
+        "_uuid": "fc3bf07da78eabfe1e2491a5a28af072a5986f08"
+      },
+      "cell_type": "code",
+      "source": "averaged_models = AveragingModels(models = (Enet, GBoost, Kridge, Lasso))\nscore = rmsle_cv(averaged_models)\nprint(\" Averaged base models score: {:.4f} ({:.4f})\\n\".format(score.mean(), score.std()))",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "collapsed": true,
+        "trusted": true,
+        "_uuid": "f11000ff17dbbd6c6c7179fce3fcc64bc43c6cc2"
+      },
+      "cell_type": "code",
+      "source": "class StackingAveragedModels(BaseEstimator, RegressorMixin, TransformerMixin):\n    def __init__(self, base_models, meta_model, n_folds=5):\n        self.base_models = base_models\n        self.meta_model = meta_model\n        self.n_folds = n_folds\n   \n    def fit(self, X, y):\n        self.base_models_ = [list() for x in self.base_models]\n        self.meta_model_ = clone(self.meta_model)\n        kfold = KFold(n_splits=self.n_folds, shuffle=True, random_state=156)\n        \n        # Train cloned base models then create out-of-fold predictions\n        # that are needed to train the cloned meta-model\n        out_of_fold_predictions = np.zeros((X.shape[0], len(self.base_models)))\n        for i, model in enumerate(self.base_models):\n            for train_index, holdout_index in kfold.split(X, y):\n                instance = clone(model)\n                self.base_models_[i].append(instance)\n                instance.fit(X[train_index], y[train_index])\n                y_pred = instance.predict(X[holdout_index])\n                out_of_fold_predictions[holdout_index, i] = y_pred\n                \n        # Now train the cloned  meta-model using the out-of-fold predictions as new feature\n        self.meta_model_.fit(out_of_fold_predictions, y)\n        return self\n   #Do the predictions of all base models on the test data and use the averaged predictions as \n    #meta-features for the final prediction which is done by the meta-model\n    def predict(self, X):\n        meta_features = np.column_stack([\n            np.column_stack([model.predict(X) for model in base_models]).mean(axis=1)\n            for base_models in self.base_models_ ])\n        return self.meta_model_.predict(meta_features)",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "collapsed": true,
+        "trusted": true,
+        "_uuid": "9b9628e05114318fc6127751aac86e0e381fbdf5"
+      },
+      "cell_type": "code",
+      "source": "def rmsle(y, y_pred):\n    return np.sqrt(mean_squared_error(y, y_pred))",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "_uuid": "a89c2cc9f931a8d6c04775e83090aa9c29fc8581"
+      },
+      "cell_type": "code",
+      "source": "stacked_averaged_models = StackingAveragedModels(base_models = (Enet, GBoost, Kridge),meta_model = Lasso)\nstacked_averaged_models.fit(train_f.values, y)\nstacked_train_pred = stacked_averaged_models.predict(train_f)\nstacked_pred = np.expm1(stacked_averaged_models.predict(test_f))\nprint(rmsle(y, stacked_train_pred))",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "collapsed": true,
+        "trusted": true,
+        "_uuid": "145a9b77a642a01884e5acd0f5bfd5dac61ee578"
+      },
+      "cell_type": "code",
+      "source": "model_xgb.fit(train_f,y)\nxgb_train_pred = model_xgb.predict(train_f)\nxgb_pred = np.expm1(model_xgb.predict(test_f))\nprint(rmsle(y, xgb_train_pred))",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "collapsed": true,
+        "trusted": true,
+        "_uuid": "427c1f467f286b6c55051a9cb7ec21cc02693531"
+      },
+      "cell_type": "code",
+      "source": "Lgbm.fit(train_f,y)\nLgmb_train_pred = Lgbm.predict(train_f)\nLgbm_pred = np.expm1(Lgbm.predict(test_f.values))\nprint(rmsle(y,Lgbm_train_pred))",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "collapsed": true,
+        "trusted": true,
+        "_uuid": "06774df87b0b31f7f519c2a6b7b38c785043d4c1"
+      },
+      "cell_type": "code",
+      "source": "ensemble = stacked_pred*0.9 + xgb_pred*0.1\nsub = pd.DataFrame()\nsub['Id'] = test_ID\nsub['SalePrice'] = ensemble\nsub.to_csv('submission_stacked.csv',index=False)",
+      "execution_count": null,
+      "outputs": []
+    }
+  ],
+  "metadata": {
+    "kernelspec": {
+      "display_name": "Python 3",
+      "language": "python",
+      "name": "python3"
+    },
+    "language_info": {
+      "name": "python",
+      "version": "3.6.4",
+      "mimetype": "text/x-python",
+      "codemirror_mode": {
+        "name": "ipython",
+        "version": 3
+      },
+      "pygments_lexer": "ipython3",
+      "nbconvert_exporter": "python",
+      "file_extension": ".py"
+    }
+  },
+  "nbformat": 4,
+  "nbformat_minor": 1
+}
